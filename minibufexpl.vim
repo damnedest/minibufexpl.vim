@@ -17,8 +17,8 @@
 "  Description: Mini Buffer Explorer Vim Plugin
 "   Maintainer: Bindu Wavell <bindu@wavell.net>
 "          URL: http://vim.sourceforge.net/scripts/script.php?script_id=159
-"  Last Change: Suturdat, December 21, 2013
-"      Version: 6.3.3
+"  Last Change: Sunday, June 21, 2004
+"      Version: 6.3.2
 "               Derived from Jeff Lanzarotta's bufexplorer.vim version 6.0.7
 "               Jeff can be reached at (jefflanzarotta@yahoo.com) and the
 "               original plugin can be found at:
@@ -254,8 +254,6 @@
 "               failing.
 "
 "      History: Moved to end of file
-"
-"               Expand buffer name when file names are same.
 "
 " Known Issues: When debugging is turned on and set to output to a window, there
 "               are some cases where the window is opened more than once, there
@@ -1064,7 +1062,7 @@ function! <SID>BuildBufferList(delBufNum, updateBufList)
   let l:fileNames = ''
   let l:maxTabWidth = 0
 
-  let l:buffers = {}
+  let l:buffers = []
 
   " Loop through every buffer less than the total number of buffers.
   while(l:i <= l:NBuffers)
@@ -1083,7 +1081,7 @@ function! <SID>BuildBufferList(delBufNum, updateBufList)
           " Only show modifiable buffers (The idea is that we don't
           " want to show Explorers)
           if (getbufvar(l:i, '&modifiable') == 1 && l:BufName != '-MiniBufExplorer-')
-            let l:buffers[l:i] = l:BufName
+            call add(l:buffers, [l:i, l:BufName])
           endif
         endif
       endif
@@ -1091,21 +1089,17 @@ function! <SID>BuildBufferList(delBufNum, updateBufList)
   endwhile
 
   let l:buffers = <SID>TrimFilePathes(l:buffers)
+  let l:buffers = <SID>SortBuffersByIndex(l:buffers)
   let l:NBuffers = len(l:buffers)
   let l:i = 0
 
-  let l:bufferIndexes = keys(l:buffers)
-
   while(l:i < l:NBuffers)
-    let l:index = l:bufferIndexes[l:i] + 0
-    let l:BufName = l:buffers[l:index]
+    let l:index = l:buffers[l:i][0] + 0
+    let l:BufName = l:buffers[l:i][1]
 
     " Get filename & Remove []'s & ()'s
-    let l:shortBufName = l:BufName
-    "let l:shortBufName = fnamemodify(l:BufName, ":t")
-    "let l:shortBufName = substitute(l:shortBufName, '[][()]', '', 'g')
-    let l:tab = '['.l:index.': '.l:shortBufName.']'
-
+    let l:BufName = substitute(l:BufName, '[][()]', '?', 'g')
+    let l:tab = '['.l:index.':'.l:BufName.']'
     " If the buffer is open in a window mark it
     if (bufwinnr(l:index) != -1)
       let l:tab = l:tab . '*'
@@ -1209,24 +1203,21 @@ endfunction
 
 " TrimFilePathes - Trim filepathes to first uniq symbol {{{
 function! <SID>TrimFilePathes(filePathes)
-  let l:output = copy(a:filePathes)
+  let l:output = []
 
-  let l:buffersIndexes = keys(a:filePathes)
-  let l:buffersNames = values(a:filePathes)
-  let l:buffersCount = len(l:buffersNames)
-
-  let l:trimPositions = map(copy(l:buffersNames), 'strlen(v:val)-1')
+  let l:buffersCount = len(a:filePathes)
+  let l:trimPositions = map(copy(a:filePathes), 'strlen(v:val[1])-1')
 
   let l:i = 0
 
   while(l:i < l:buffersCount - 1)
-    let l:trimVictim = l:buffersNames[l:i]
+    let l:trimVictim = a:filePathes[l:i][1]
     let l:victimLength = strlen(l:trimVictim)
 
     let l:j = l:i + 1
     while (l:j < l:buffersCount)
 
-      let l:trimMeasure = l:buffersNames[l:j]
+      let l:trimMeasure = a:filePathes[l:j][1]
       let l:measureLength = strlen(l:trimMeasure)
 
       let l:victimIndex = l:victimLength - 1
@@ -1261,19 +1252,51 @@ function! <SID>TrimFilePathes(filePathes)
   let l:i = 0
   while (l:i < l:buffersCount)
     let l:trimStartPosition = l:trimPositions[l:i]
-    let l:trimVictim = l:buffersNames[l:i]
+    let l:trimVictim = a:filePathes[l:i][1]
 
     while(l:trimStartPosition > 0 && l:trimVictim[l:trimStartPosition - 1] != '/' && l:trimVictim[l:trimStartPosition - 1] != '\')
       let l:trimStartPosition = l:trimStartPosition - 1
     endwhile
 
-    let l:output[l:buffersIndexes[l:i]] = strpart(l:trimVictim, l:trimStartPosition, strlen(l:trimVictim))
+    call add(l:output, [a:filePathes[l:i][0], strpart(l:trimVictim, l:trimStartPosition, strlen(l:trimVictim))])
 
     let l:i = l:i + 1
   endwhile
 
   return l:output
 
+endfunction
+
+" }}}
+
+" SortBuffersByIndex - Sort buffers tabs names by buffers indexes {{{
+" @buffers - List of buffers, where buffer is train with two elements:
+" [buffer_index, buffer_name]
+" @example
+" buffers = [[2, 'example2.txt'], [1, 'example1.txt']]
+" output = [[1, 'example1.txt'], [2, 'example2.txt']]
+function! <SID>SortBuffersByIndex(buffers)
+  let l:output = copy(a:buffers)
+  let l:buffersCount = len(l:output)
+
+  let l:i = 0
+  while (l:i < l:buffersCount - 1)
+    let l:j = l:i + 1
+    while (l:j < l:buffersCount)
+
+      if (l:output[l:i][0] + 0 > l:output[l:j][0] + 0)
+        let l:temp = l:output[l:i]
+        let l:output[l:i] = l:output[l:j]
+        let l:output[l:j] = l:temp
+      endif
+
+      let l:j = l:j + 1
+    endwhile
+
+    let l:i = l:i + 1
+  endwhile
+
+  return l:output
 endfunction
 
 " }}}
